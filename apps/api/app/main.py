@@ -2,13 +2,18 @@ from fastapi import Depends, FastAPI, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import text
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import secrets
 from datetime import date
 import json
 import logging
 import time
 import hashlib
+import re
+import smtplib
+import ssl
+from email.message import EmailMessage
+from urllib.parse import quote
 from collections import defaultdict
 from threading import Lock
 from sqlalchemy.exc import IntegrityError
@@ -17,9 +22,11 @@ from uuid import uuid4
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_context, require_permission
-from app.models import Appointment, AuditLog, ChatMessage, Claim, Device, DeviceReading, Encounter, InsurancePolicy, Invoice, LabOrder, MonitoringAlert, MonitoringRule, Notification, Organization, OrganizationMembership, Patient, Payment, Practitioner, Prescription, PriorAuthorization, RadiologyOrder, User, VideoSession
-from app.schemas import AppointmentCreate, AppointmentResponse, AuthorizationCreate, ClaimCreate, CopilotRequest, DeviceCreate, DeviceReadingCreate, EncounterCreate, EncounterResponse, InsurancePolicyCreate, InvoiceCreate, LabOrderCreate, LabOrderResponse, LoginRequest, MessageCreate, MonitoringRuleCreate, NotificationCreate, OrderResultUpdate, OrganizationProfileUpdate, PatientCreate, PatientResponse, PaymentCreate, PractitionerBatchCreate, PractitionerCreate, PractitionerResponse, PrescriptionCreate, PrescriptionResponse, RadiologyOrderCreate, RadiologyOrderResponse, SessionResponse, StatusUpdate, UserResponse
+from app.models import Appointment, AuditLog, ChatMessage, Claim, Device, DeviceReading, Encounter, InsurancePolicy, Invoice, LabOrder, MonitoringAlert, MonitoringRule, Notification, Organization, OrganizationMembership, OrganizationSettings, OrganizationSubscription, PasswordResetToken, Patient, Payment, Permission, Practitioner, Prescription, PriorAuthorization, RadiologyOrder, Role, User, VideoSession
+from app.schemas import AppointmentCreate, AppointmentResponse, AuthorizationCreate, ClaimCreate, CopilotRequest, DeviceCreate, DeviceReadingCreate, EncounterCreate, EncounterResponse, ForgotPasswordRequest, InsurancePolicyCreate, InvoiceCreate, LabOrderCreate, LabOrderResponse, LoginRequest, MessageCreate, MonitoringRuleCreate, NotificationCreate, OrderResultUpdate, OrganizationProfileUpdate, PatientCreate, PatientResponse, PaymentCreate, PractitionerBatchCreate, PractitionerCreate, PractitionerResponse, PrescriptionCreate, PrescriptionResponse, RadiologyOrderCreate, RadiologyOrderResponse, ResetPasswordRequest, SessionResponse, SignupRequest, StatusUpdate, UserResponse
 from app.security import create_access_token, verify_password
+from app.seed import ROLE_PERMISSIONS
+from app.security import hash_password
 
 app = FastAPI(title="MediSphere AI API", version="1.0.0", openapi_url="/api/v1/openapi.json")
 if settings.environment.lower() == "production":
@@ -29,6 +36,15 @@ if settings.environment.lower() == "production":
         raise RuntimeError("Production requires secure cookies and explicit CORS_ORIGINS")
     if not settings.database_url.startswith("postgresql+psycopg://"):
         raise RuntimeError("Production requires PostgreSQL via the psycopg driver")
+    if not settings.smtp_host or not settings.smtp_sender:
+        raise RuntimeError("Production password recovery requires SMTP_HOST and SMTP_SENDER")
+    if not settings.web_base_url.startswith("https://"):
+        raise RuntimeError("Production password recovery requires an HTTPS WEB_BASE_URL")
+elif settings.environment.lower() != "development":
+    if not settings.smtp_host or not settings.smtp_sender:
+        raise RuntimeError("Non-development password recovery requires SMTP_HOST and SMTP_SENDER")
+    if not settings.web_base_url.startswith("https://"):
+        raise RuntimeError("Non-development password recovery requires an HTTPS WEB_BASE_URL")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
@@ -411,6 +427,142 @@ def care_copilot(payload: CopilotRequest, context=Depends(get_current_context), 
     return {"answer": answer, "category": category, "sources": sources, "generated": False}
 
 
+def set_session_cookie(response: Response, user: User, membership: OrganizationMembership):
+    token = create_access_token(subject=str(user.id), organization_id=membership.organization_id, role=membership.role.name, session_version=user.session_version)
+    response.set_cookie(
+        "access_token", token, httponly=True, secure=settings.cookie_secure, samesite="lax",
+        max_age=settings.access_token_minutes * 60, path="/",
+    )
+
+
+def deliver_password_reset(email: str, reset_url: str):
+    message = EmailMessage()
+    message["Subject"] = "Reset your MediSphere AI password"
+    message["From"] = settings.smtp_sender
+    message["To"] = email
+    message.set_content(
+        "A password reset was requested for your MediSphere AI account. "
+        f"Use this link within 30 minutes: {reset_url}\n\n"
+        "If you did not request this, you can ignore this email."
+    )
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as server:
+        if settings.smtp_starttls:
+            server.starttls(context=ssl.create_default_context())
+        if settings.smtp_username:
+            server.login(settings.smtp_username, settings.smtp_password)
+        server.send_message(message)
+
+
+@app.post("/api/v1/auth/signup", response_model=SessionResponse, status_code=201)
+def signup(payload: SignupRequest, response: Response, db: Session = Depends(get_db)):
+    if settings.environment.lower() != "development" and payload.email.endswith(".local"):
+        raise HTTPException(status_code=422, detail="Use a real work email address")
+    if db.query(User).filter_by(email=payload.email).first():
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+
+    slug_base = re.sub(r"[^a-z0-9]+", "-", payload.organization_name.lower()).strip("-")[:80].strip("-") or "workspace"
+    organization = Organization(name=payload.organization_name, slug=f"{slug_base}-{secrets.token_hex(4)}", contact_phone=payload.phone_e164)
+    user = User(
+        email=payload.email,
+        full_name=payload.full_name,
+        password_hash=hash_password(payload.password),
+        phone_e164=payload.phone_e164,
+        country_code=payload.country_code,
+        region=payload.region,
+        profile_image_data=payload.profile_image_data,
+    )
+    role = db.query(Role).filter_by(name=payload.role_code).first() or Role(
+        name=payload.role_code,
+        description=payload.role_code.replace("_", " ").title(),
+    )
+    db.add_all([organization, user, role])
+    try:
+        db.flush()
+        role_permissions = []
+        for code in ROLE_PERMISSIONS[payload.role_code]:
+            permission = db.query(Permission).filter_by(code=code).first()
+            if not permission:
+                permission = Permission(code=code, description=code.replace(":", " "))
+                db.add(permission)
+            role_permissions.append(permission)
+        role.permissions = role_permissions
+        organization.settings = OrganizationSettings(
+            timezone="Asia/Karachi" if payload.country_code == "PK" else "UTC",
+            default_locale="en",
+        )
+        organization.subscription = OrganizationSubscription(plan_code="demo", status="trial")
+        membership = OrganizationMembership(organization=organization, user=user, role=role)
+        db.add(membership)
+        db.flush()
+        db.add(AuditLog(organization_id=organization.id, actor_user_id=user.id, event="auth.signup.succeeded", details={"role": role.name}))
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="An account could not be created with these details") from exc
+
+    db.refresh(organization)
+    db.refresh(user)
+    db.refresh(membership)
+    set_session_cookie(response, user, membership)
+    return SessionResponse(
+        user=UserResponse.model_validate(user),
+        organization=organization.name,
+        organization_slug=organization.slug,
+        role=membership.role.name,
+    )
+
+
+@app.post("/api/v1/auth/password/forgot")
+def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    generic_message = "If an active account matches that email, password reset instructions will be sent."
+    user = db.query(User).filter_by(email=payload.email, is_active=True).first()
+    if not user:
+        return {"message": generic_message}
+
+    now = datetime.now(timezone.utc)
+    for previous in db.query(PasswordResetToken).filter_by(user_id=user.id, used_at=None).all():
+        previous.used_at = now
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    db.add(PasswordResetToken(user_id=user.id, token_hash=token_hash, expires_at=now + timedelta(minutes=30)))
+    db.commit()
+
+    reset_url = f"{settings.web_base_url.rstrip('/')}/reset-password?token={quote(raw_token)}"
+    if settings.environment.lower() != "development":
+        try:
+            deliver_password_reset(user.email, reset_url)
+        except (OSError, smtplib.SMTPException) as exc:
+            logging.getLogger("medisphere.auth").warning("Password reset email delivery failed: %s", type(exc).__name__)
+            return {"message": generic_message}
+    else:
+        return {"message": generic_message, "development_reset_url": reset_url}
+    return {"message": generic_message}
+
+
+@app.post("/api/v1/auth/password/reset")
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    token_hash = hashlib.sha256(payload.token.encode()).hexdigest()
+    reset_token = db.query(PasswordResetToken).filter_by(token_hash=token_hash, used_at=None).first()
+    if not reset_token:
+        raise HTTPException(status_code=400, detail="This reset link is invalid or expired")
+    expires_at = reset_token.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="This reset link is invalid or expired")
+    user = db.get(User, reset_token.user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=400, detail="This reset link is invalid or expired")
+
+    user.password_hash = hash_password(payload.password)
+    user.session_version += 1
+    reset_token.used_at = datetime.now(timezone.utc)
+    for membership in db.query(OrganizationMembership).filter_by(user_id=user.id).all():
+        db.add(AuditLog(organization_id=membership.organization_id, actor_user_id=user.id, event="auth.password.reset", details={}))
+    db.commit()
+    return {"message": "Password updated. You can now sign in with your new password."}
+
+
 @app.post("/api/v1/auth/login", response_model=SessionResponse)
 def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email.lower()).first()
@@ -418,25 +570,26 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
         db.add(AuditLog(event="auth.login.failed", details={}))
         db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    membership = (
+    memberships = (
         db.query(OrganizationMembership)
         .options(joinedload(OrganizationMembership.organization), joinedload(OrganizationMembership.role))
         .join(Organization)
-        .filter(OrganizationMembership.user_id == user.id, Organization.slug == payload.organization_slug)
-        .first()
+        .filter(OrganizationMembership.user_id == user.id)
+        .filter(Organization.slug == payload.organization_slug if payload.organization_slug else True)
+        .limit(2)
+        .all()
     )
+    if len(memberships) > 1:
+        raise HTTPException(status_code=422, detail="Enter your organization slug to choose a workspace")
+    membership = memberships[0] if memberships else None
     if not membership:
         db.add(AuditLog(actor_user_id=user.id, event="auth.login.denied", details={}))
         db.commit()
         raise HTTPException(status_code=403, detail="No access to this organization")
-    token = create_access_token(subject=str(user.id), organization_id=membership.organization_id, role=membership.role.name)
-    response.set_cookie(
-        "access_token", token, httponly=True, secure=settings.cookie_secure, samesite="lax",
-        max_age=settings.access_token_minutes * 60, path="/",
-    )
+    set_session_cookie(response, user, membership)
     db.add(AuditLog(organization_id=membership.organization_id, actor_user_id=user.id, event="auth.login.succeeded", details={}))
     db.commit()
-    return SessionResponse(user=UserResponse.model_validate(user), organization=membership.organization.name, role=membership.role.name)
+    return SessionResponse(user=UserResponse.model_validate(user), organization=membership.organization.name, organization_slug=membership.organization.slug, role=membership.role.name)
 
 
 @app.post("/api/v1/auth/logout")
@@ -448,7 +601,7 @@ def logout(response: Response):
 @app.get("/api/v1/auth/me", response_model=SessionResponse)
 def me(context=Depends(get_current_context)):
     user, membership = context
-    return SessionResponse(user=UserResponse.model_validate(user), organization=membership.organization.name, role=membership.role.name)
+    return SessionResponse(user=UserResponse.model_validate(user), organization=membership.organization.name, organization_slug=membership.organization.slug, role=membership.role.name)
 
 
 @app.get("/api/v1/auth/permissions")

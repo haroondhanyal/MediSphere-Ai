@@ -41,6 +41,10 @@ resource "kubernetes_deployment_v1" "api" {
             value = "true"
           }
           env {
+            name  = "WEB_BASE_URL"
+            value = "https://${var.ingress_host}"
+          }
+          env {
             name  = "SEED_DEMO_DATA"
             value = "false"
           }

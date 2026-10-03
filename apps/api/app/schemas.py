@@ -1,4 +1,7 @@
 from datetime import date, datetime
+from base64 import b64decode
+from binascii import Error as Base64Error
+from typing import Literal
 
 from email_validator import validate_email
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -18,7 +21,7 @@ def normalize_email(value: str) -> str:
 class LoginRequest(BaseModel):
     email: str
     password: str
-    organization_slug: str
+    organization_slug: str | None = None
 
     @field_validator("email")
     @classmethod
@@ -26,10 +29,77 @@ class LoginRequest(BaseModel):
         return normalize_email(value)
 
 
+class SignupRequest(BaseModel):
+    full_name: str = Field(min_length=2, max_length=180)
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=12, max_length=128)
+    organization_name: str = Field(min_length=2, max_length=180)
+    role_code: Literal["hospital_admin", "doctor", "nurse", "receptionist"]
+    phone_e164: str = Field(pattern=r"^\+[1-9][0-9]{7,14}$")
+    country_code: Literal["PK", "US", "GB", "IN"]
+    region: str = Field(min_length=1, max_length=120)
+    profile_image_data: str | None = Field(default=None, max_length=700_000)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_address(cls, value: str) -> str:
+        return normalize_email(value.strip())
+
+    @field_validator("full_name", "organization_name", "region")
+    @classmethod
+    def trim_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("This field cannot be blank")
+        return value
+
+    @field_validator("profile_image_data")
+    @classmethod
+    def validate_profile_image(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        prefixes = {
+            "data:image/png;base64,": b"\x89PNG\r\n\x1a\n",
+            "data:image/jpeg;base64,": b"\xff\xd8\xff",
+            "data:image/webp;base64,": b"RIFF",
+        }
+        prefix = next((item for item in prefixes if value.startswith(item)), None)
+        if prefix is None:
+            raise ValueError("Profile image must be PNG, JPEG, or WebP")
+        try:
+            image = b64decode(value[len(prefix):], validate=True)
+        except Base64Error as exc:
+            raise ValueError("Profile image data is invalid") from exc
+        if len(image) > 512_000:
+            raise ValueError("Profile image must be 512 KB or smaller")
+        signature = prefixes[prefix]
+        if not image.startswith(signature) or (prefix.startswith("data:image/webp") and image[8:12] != b"WEBP"):
+            raise ValueError("Profile image data does not match its file type")
+        return value
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_address(cls, value: str) -> str:
+        return normalize_email(value.strip())
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    password: str = Field(min_length=12, max_length=128)
+
+
 class UserResponse(BaseModel):
     id: int
     email: str
     full_name: str
+    phone_e164: str | None = None
+    country_code: str | None = None
+    region: str | None = None
+    profile_image_data: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -37,6 +107,7 @@ class UserResponse(BaseModel):
 class SessionResponse(BaseModel):
     user: UserResponse
     organization: str
+    organization_slug: str | None = None
     role: str
 
 

@@ -17,10 +17,10 @@ def verify_password(password: str, hashed: str) -> bool:
     return password_hash.verify(password, hashed)
 
 
-def create_access_token(*, subject: str, organization_id: int, role: str) -> str:
+def create_access_token(*, subject: str, organization_id: int, role: str, session_version: int = 0) -> str:
     expires = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_minutes)
     return jwt.encode(
-        {"sub": subject, "org": organization_id, "role": role, "iss": settings.jwt_issuer, "exp": expires},
+        {"sub": subject, "org": organization_id, "role": role, "ver": session_version, "iss": settings.jwt_issuer, "exp": expires},
         settings.jwt_secret,
         algorithm=ALGORITHM,
     )

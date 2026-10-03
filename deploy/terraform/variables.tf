@@ -17,7 +17,7 @@ variable "web_image" {
 variable "api_secret_name" {
   type        = string
   default     = "medisphere-api-secrets"
-  description = "Pre-created secret with DATABASE_URL, JWT_SECRET, JWT_ISSUER and CORS_ORIGINS."
+  description = "Pre-created secret with database, JWT, CORS, and SMTP password-recovery settings."
 }
 variable "replicas" {
   type    = number

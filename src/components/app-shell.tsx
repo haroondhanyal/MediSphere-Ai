@@ -10,7 +10,7 @@ import { modules } from "@/lib/modules";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [session, setSession] = useState<{ user: { full_name: string }; organization: string; role: string } | null>(null);
+  const [session, setSession] = useState<{ user: { full_name: string; profile_image_data?: string | null }; organization: string; role: string } | null>(null);
   const [organizationLogo, setOrganizationLogo] = useState<string | null>(null);
   useEffect(() => {
     fetch("/api/auth/me").then(async (response) => {
@@ -40,7 +40,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className="topbar"><Link className="top-brand" href="/dashboard" aria-label="MediSphere AI home"><Image src="/medisphere-logo.svg" width={220} height={48} alt="MediSphere AI" priority /></Link><div className="top-actions">
         <div className="search-button" aria-label="Search"><Search size={16} /><span>Search anything...</span><kbd>⌘ K</kbd></div>
         <span className="icon-button" aria-label="Notifications"><Bell size={18} /><i /></span>
-        <div className="user-chip"><span className="user-avatar">{session?.user.full_name.split(" ").map((part) => part[0]).join("").slice(0, 2) ?? "NC"}</span><span><strong>{session?.user.full_name ?? "Loading account"}</strong><small>{session?.role.replaceAll("_", " ") ?? "Workspace user"}</small></span><button className="signout-button" onClick={signOut} aria-label="Sign out" title="Sign out"><LogOut size={15} /></button></div>
+        <div className="user-chip"><span className={"user-avatar" + (session?.user.profile_image_data ? " profile-avatar" : "")}>{session?.user.profile_image_data ? <img src={session.user.profile_image_data} alt="" /> : session?.user.full_name.split(" ").map((part) => part[0]).join("").slice(0, 2) ?? "NC"}</span><span><strong>{session?.user.full_name ?? "Loading account"}</strong><small>{session?.role.replaceAll("_", " ") ?? "Workspace user"}</small></span><button className="signout-button" onClick={signOut} aria-label="Sign out" title="Sign out"><LogOut size={15} /></button></div>
       </div></header>
       <main className="page-content">{children}</main>
       <footer className="footer">MediSphere AI <span>·</span> Unified healthcare workspace</footer>

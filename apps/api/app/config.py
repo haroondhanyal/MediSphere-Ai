@@ -9,6 +9,13 @@ class Settings(BaseSettings):
     access_token_minutes: int = 30
     cookie_secure: bool = False
     cors_origins: str = "http://localhost:3000"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_sender: str = ""
+    smtp_starttls: bool = True
+    web_base_url: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

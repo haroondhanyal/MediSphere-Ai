@@ -9,7 +9,7 @@ export default function LoginPage() {
       <h1>Welcome back</h1>
       <p className="muted">Sign in to your healthcare workspace.</p>
       <LoginForm />
-      <p className="login-foot">Local demo: admin@medisphere.local · MediSphere-Demo-2026!</p>
+      {process.env.NODE_ENV !== "production" && <p className="login-foot">Local demo: admin@medisphere.local · MediSphere-Demo-2026!</p>}
     </section>
   </main>;
 }

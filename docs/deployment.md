@@ -14,8 +14,10 @@ Set these values in a secret manager and expose them to the API as a Kubernetes 
 - `JWT_SECRET`: a unique random value of at least 32 characters.
 - `JWT_ISSUER`: an environment-specific issuer.
 - `CORS_ORIGINS`: explicit public origin(s), without `*`.
+- `WEB_BASE_URL`: the public HTTPS URL used in password recovery links.
+- `SMTP_HOST`, `SMTP_PORT`, and `SMTP_SENDER`: an email relay for password recovery. Set `SMTP_USERNAME` and `SMTP_PASSWORD` when the relay requires authentication; `SMTP_STARTTLS` defaults to `true`.
 
-Production startup checks require a strong JWT secret, secure cookies, explicit CORS origins, and PostgreSQL. Demo seeding is disabled by default. Back up the database before schema changes. For a first administrator, run the one-time `app.provision_admin` command using the separate bootstrap job and temporary secret described below; it creates one administrator and never seeds demo accounts.
+Production startup checks require a strong JWT secret, secure cookies, explicit CORS origins, PostgreSQL, and SMTP settings for account recovery. Demo seeding is disabled by default. Back up the database before schema changes. For a first administrator, run the one-time `app.provision_admin` command using the separate bootstrap job and temporary secret described below; it creates one administrator and never seeds demo accounts.
 
 ## Kubernetes manifests
 
@@ -38,6 +40,8 @@ kubectl rollout status -n medisphere deployment/web
 ```
 
 Prepare the API environment file through your secret manager; it must define `DATABASE_URL`, `JWT_SECRET`, `JWT_ISSUER`, and `CORS_ORIGINS`. Prepare a separate, temporary bootstrap environment file with `DATABASE_URL`, `SEED_ADMIN_EMAIL`, and a unique `SEED_ADMIN_PASSWORD` of at least 16 characters. Replace `YOUR_ORG`, `VERSION`, and the example hostname in all manifests before applying. The API serves Prometheus metrics at `/metrics`; scrape it only on the internal cluster network. Example scrape and alert rules are in `observability/`.
+
+Self-signup creates a new organization and assigns one of the offered roles within that organization; it does not join an existing organization. Configure the SMTP values above to deliver password reset links. In local development only, the forgot-password screen displays the reset link directly.
 
 ## Terraform
 

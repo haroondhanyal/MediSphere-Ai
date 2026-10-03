@@ -21,7 +21,7 @@ spec:
           image: ghcr.io/YOUR_ORG/medisphere-api:VERSION
           ports: [{ name: http, containerPort: 8000 }]
           envFrom: [{ secretRef: { name: medisphere-api-secrets } }]
-          env: [{ name: ENVIRONMENT, value: production }, { name: COOKIE_SECURE, value: "true" }, { name: SEED_DEMO_DATA, value: "false" }, { name: RUN_MIGRATIONS, value: "false" }]
+          env: [{ name: ENVIRONMENT, value: production }, { name: COOKIE_SECURE, value: "true" }, { name: WEB_BASE_URL, value: "https://medisphere.example.com" }, { name: SEED_DEMO_DATA, value: "false" }, { name: RUN_MIGRATIONS, value: "false" }]
           resources:
             requests: { cpu: 100m, memory: 256Mi }
             limits: { cpu: "1", memory: 768Mi }

@@ -126,6 +126,7 @@ flowchart LR
 - Workflow actions write audit events. Device ingestion uses scoped per-device credentials that can be rotated.
 - Local demo accounts and synthetic seed records are for development only. Production startup does not seed the bundled demo users or patient data.
 - Healthcare privacy, security, retention, and jurisdiction-specific compliance reviews are deployment responsibilities. This repository is not a compliance certification.
+- Users can create a separate workspace during signup with one of four roles. Password recovery uses a one-time expiring link; local development displays the link, while production sends it through the configured SMTP relay.
 
 ## Technology and architecture
 
@@ -158,6 +159,8 @@ Start the full stack (web, API, and PostgreSQL):
 cp .env.example .env
 docker compose up --build
 ```
+
+Open `http://localhost:3000/login` to sign in. Use **Create an account** to create a separate workspace, choose a role, and optionally add a profile photo. Local forgot-password requests show a one-time reset link in the browser; production email delivery requires the SMTP settings listed in the [deployment guide](docs/deployment.md).
 
 Open <http://localhost:3000>. The API is available at <http://localhost:8000>, and interactive API documentation is at <http://localhost:8000/docs>.
 

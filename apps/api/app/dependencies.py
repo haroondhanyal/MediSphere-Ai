@@ -26,7 +26,7 @@ def get_current_context(
         .first()
     )
     user = db.get(User, user_id)
-    if not user or not user.is_active or not membership:
+    if not user or not user.is_active or not membership or payload.get("ver", 0) != user.session_version:
         raise unauthorized
     return user, membership
 
