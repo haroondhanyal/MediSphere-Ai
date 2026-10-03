@@ -1,8 +1,6 @@
 # MediSphere AI
 
-<p align="center">
-  <img src="public/medisphere-logo.svg" alt="MediSphere AI logo" width="440" />
-</p>
+![MediSphere AI logo](./public/medisphere-logo.svg)
 
 AI-native unified healthcare workspace for local care coordination and administration workflows.
 
