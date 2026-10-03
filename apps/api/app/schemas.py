@@ -1,7 +1,7 @@
 from datetime import date, datetime
 
 from email_validator import validate_email
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class CopilotRequest(BaseModel):
@@ -62,6 +62,8 @@ class PractitionerCreate(BaseModel):
     family_name: str = Field(min_length=1, max_length=100)
     specialty: str = Field(min_length=1, max_length=120)
     email: str = Field(min_length=3, max_length=320)
+    phone: str | None = Field(default=None, max_length=40)
+    role: str = Field(default="Practitioner", min_length=1, max_length=80)
 
 
 class PractitionerResponse(PractitionerCreate):
@@ -69,6 +71,16 @@ class PractitionerResponse(PractitionerCreate):
     status: str
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PractitionerBatchCreate(BaseModel):
+    practitioners: list[PractitionerCreate] = Field(min_length=1, max_length=30)
+
+
+class OrganizationProfileUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    logo_url: str | None = Field(default=None, max_length=2048)
+    contact_phone: str | None = Field(default=None, max_length=40)
 
 
 class AppointmentCreate(BaseModel):
@@ -210,3 +222,18 @@ class DeviceReadingCreate(BaseModel):
     value: float = Field(allow_inf_nan=False)
     unit: str = Field(min_length=1, max_length=40)
     recorded_at: datetime
+
+
+class MonitoringRuleCreate(BaseModel):
+    metric: str = Field(min_length=1, max_length=100)
+    unit: str = Field(min_length=1, max_length=40)
+    minimum: float | None = Field(default=None, allow_inf_nan=False)
+    maximum: float | None = Field(default=None, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_bounds(self):
+        if self.minimum is None and self.maximum is None:
+            raise ValueError("Set at least one alert threshold")
+        if self.minimum is not None and self.maximum is not None and self.minimum >= self.maximum:
+            raise ValueError("Minimum threshold must be lower than maximum threshold")
+        return self

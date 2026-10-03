@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+rule_files:
+  - alerts.yml
+scrape_configs:
+  - job_name: medisphere-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: [api.medisphere.svc.cluster.local:8000]

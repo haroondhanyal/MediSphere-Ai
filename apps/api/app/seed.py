@@ -1,9 +1,10 @@
 import os
+from datetime import date
 
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.models import Organization, OrganizationMembership, OrganizationSettings, OrganizationSubscription, Permission, Role, User
+from app.models import Organization, OrganizationMembership, OrganizationSettings, OrganizationSubscription, Patient, Permission, Role, User
 from app.security import hash_password
 
 ROLE_PERMISSIONS = {
@@ -20,6 +21,25 @@ ROLE_PERMISSIONS = {
     "patient": ["appointments:read"],
     "support_agent": ["users:read"],
 }
+
+# Synthetic directory entries for local demos only; these are not real people.
+DEMO_PATIENTS = [
+    ("Amina", "Khan", "female", "1988-04-12"),
+    ("Omar", "Raza", "male", "1976-09-03"),
+    ("Zara", "Ahmed", "female", "1995-01-26"),
+    ("Hamza", "Iqbal", "male", "2001-07-18"),
+    ("Noor", "Hassan", "female", "1969-11-09"),
+    ("Bilal", "Malik", "male", "1982-02-14"),
+    ("Mina", "Siddiqui", "female", "1992-04-10"),
+    ("Daniyal", "Shah", "male", "1958-06-21"),
+    ("Sara", "Farooq", "female", "2005-08-30"),
+    ("Yusuf", "Butt", "male", "1947-12-05"),
+    ("Hira", "Qureshi", "female", "1973-03-17"),
+    ("Adeel", "Chaudhry", "male", "1999-10-11"),
+    ("Layla", "Noor", "female", "1985-05-24"),
+    ("Sameer", "Akhtar", "male", "1961-01-08"),
+    ("Nadia", "Rehman", "female", "2014-09-15"),
+]
 
 
 def seed(db: Session):
@@ -50,7 +70,6 @@ def seed(db: Session):
         os.getenv("SEED_ADMIN_EMAIL", "admin@medisphere.local").lower(): ("MediSphere AI Administrator", "hospital_admin"),
         "doctor@medisphere.local": ("Demo Doctor", "doctor"),
         "nurse@medisphere.local": ("Demo Nurse", "nurse"),
-        "patient@medisphere.local": ("Demo Patient", "patient"),
         "insurance@medisphere.local": ("Demo Insurance Reviewer", "insurance_reviewer"),
         "pharmacy@medisphere.local": ("Demo Pharmacist", "pharmacist"),
         "lab@medisphere.local": ("Demo Lab Technician", "lab_technician"),
@@ -66,6 +85,25 @@ def seed(db: Session):
             db.add(OrganizationMembership(organization=organization, user=user, role=roles[role_name]))
         elif membership.role_id != roles[role_name].id:
             membership.role_id = roles[role_name].id
+    # Keep the old local patient demo login disabled if a developer seeded it earlier.
+    legacy_patient_user = db.query(User).filter_by(email="patient@medisphere.local").first()
+    if legacy_patient_user:
+        legacy_patient_user.is_active = False
+    admin = db.query(User).filter_by(email=os.getenv("SEED_ADMIN_EMAIL", "admin@medisphere.local").lower()).one()
+    for index, (given_name, family_name, gender, birth_date) in enumerate(DEMO_PATIENTS, start=1):
+        mrn = f"DEMO-{index:04d}"
+        if not db.query(Patient).filter_by(organization_id=organization.id, mrn=mrn).first():
+            db.add(Patient(
+                organization_id=organization.id,
+                mrn=mrn,
+                given_name=given_name,
+                family_name=family_name,
+                gender=gender,
+                birth_date=date.fromisoformat(birth_date),
+                email=f"demo.patient{index:02d}@example.test",
+                phone=f"+1-202-555-{index:04d}",
+                created_by=admin.id,
+            ))
     db.commit()
 
 

@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    environment: str = "development"
     database_url: str = "sqlite:///./medisphere.db"
     jwt_secret: str = "local-development-secret-change-before-deployment"
     jwt_issuer: str = "medisphere-api"

@@ -12,6 +12,6 @@
     <path d="M38 24a5 5 0 0 0-5 5v8h-8a5 5 0 0 0-5 5v5a5 5 0 0 0 5 5h8v8a5 5 0 0 0 5 5h5a5 5 0 0 0 5-5v-8h8a5 5 0 0 0 5-5v-5a5 5 0 0 0-5-5h-8v-8a5 5 0 0 0-5-5h-5Z" fill="white"/>
     <path d="M5 45h19l5-8 5 17 5-12 4 5h36" stroke="#1595C8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  <text x="103" y="64" fill="#083B81" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="700" letter-spacing="-2.7">MediSphere</text>
+  <text x="103" y="64" fill="#E7EEF5" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="700" letter-spacing="-2.7">MediSphere</text>
   <text x="370" y="64" fill="url(#ai)" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="700" letter-spacing="-2">AI</text>
 </svg>

@@ -1,0 +1,15 @@
+groups:
+  - name: medisphere-api
+    rules:
+      - alert: MediSphereApiHighServerErrorRate
+        expr: sum(rate(medisphere_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(medisphere_http_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: MediSphere API server error rate is above 5%
+      - alert: MediSphereApiHighP95Latency
+        expr: histogram_quantile(0.95, sum by (le) (rate(medisphere_http_request_duration_seconds_bucket[5m]))) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: MediSphere API p95 latency is above one second

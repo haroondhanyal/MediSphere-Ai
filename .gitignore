@@ -10,3 +10,10 @@ __pycache__/
 *.py[cod]
 .venv/
 nexacare.db
+playwright-report/
+test-results/
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log

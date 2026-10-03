@@ -1,28 +1,102 @@
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import text
 from datetime import datetime, timezone
 import secrets
 from datetime import date
 import json
+import logging
+import time
+import hashlib
+from collections import defaultdict
+from threading import Lock
 from sqlalchemy.exc import IntegrityError
 from uuid import uuid4
 
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_context, require_permission
-from app.models import Appointment, AuditLog, ChatMessage, Claim, Device, DeviceReading, Encounter, InsurancePolicy, Invoice, LabOrder, Notification, Organization, OrganizationMembership, Patient, Payment, Practitioner, Prescription, PriorAuthorization, RadiologyOrder, User, VideoSession
-from app.schemas import AppointmentCreate, AppointmentResponse, AuthorizationCreate, ClaimCreate, CopilotRequest, DeviceCreate, DeviceReadingCreate, EncounterCreate, EncounterResponse, InsurancePolicyCreate, InvoiceCreate, LabOrderCreate, LabOrderResponse, LoginRequest, MessageCreate, NotificationCreate, OrderResultUpdate, PatientCreate, PatientResponse, PaymentCreate, PractitionerCreate, PractitionerResponse, PrescriptionCreate, PrescriptionResponse, RadiologyOrderCreate, RadiologyOrderResponse, SessionResponse, StatusUpdate, UserResponse
+from app.models import Appointment, AuditLog, ChatMessage, Claim, Device, DeviceReading, Encounter, InsurancePolicy, Invoice, LabOrder, MonitoringAlert, MonitoringRule, Notification, Organization, OrganizationMembership, Patient, Payment, Practitioner, Prescription, PriorAuthorization, RadiologyOrder, User, VideoSession
+from app.schemas import AppointmentCreate, AppointmentResponse, AuthorizationCreate, ClaimCreate, CopilotRequest, DeviceCreate, DeviceReadingCreate, EncounterCreate, EncounterResponse, InsurancePolicyCreate, InvoiceCreate, LabOrderCreate, LabOrderResponse, LoginRequest, MessageCreate, MonitoringRuleCreate, NotificationCreate, OrderResultUpdate, OrganizationProfileUpdate, PatientCreate, PatientResponse, PaymentCreate, PractitionerBatchCreate, PractitionerCreate, PractitionerResponse, PrescriptionCreate, PrescriptionResponse, RadiologyOrderCreate, RadiologyOrderResponse, SessionResponse, StatusUpdate, UserResponse
 from app.security import create_access_token, verify_password
 
 app = FastAPI(title="MediSphere AI API", version="1.0.0", openapi_url="/api/v1/openapi.json")
+if settings.environment.lower() == "production":
+    if settings.jwt_secret == "local-development-secret-change-before-deployment" or len(settings.jwt_secret) < 32:
+        raise RuntimeError("Production requires a unique JWT_SECRET with at least 32 characters")
+    if not settings.cookie_secure or not settings.allowed_origins or "*" in settings.allowed_origins:
+        raise RuntimeError("Production requires secure cookies and explicit CORS_ORIGINS")
+    if not settings.database_url.startswith("postgresql+psycopg://"):
+        raise RuntimeError("Production requires PostgreSQL via the psycopg driver")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type"],
 )
+_duration_buckets = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0)
+_http_metrics: dict[tuple[str, str, int], list[float]] = defaultdict(lambda: [0, 0.0] + [0] * len(_duration_buckets))
+_metrics_lock = Lock()
+_http_logger = logging.getLogger("medisphere.http")
+
+
+@app.middleware("http")
+async def request_telemetry(request: Request, call_next):
+    request_id = str(uuid4())
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        elapsed = time.perf_counter() - started
+        _http_logger.error(json.dumps({"request_id": request_id, "method": request.method, "status": 500, "duration_seconds": round(elapsed, 6)}))
+        raise
+    elapsed = time.perf_counter() - started
+    response.headers["X-Request-ID"] = request_id
+    route = getattr(request.scope.get("route"), "path", "unmatched")
+    with _metrics_lock:
+        values = _http_metrics[(request.method, route, response.status_code)]
+        values[0] += 1
+        values[1] += elapsed
+        for index, boundary in enumerate(_duration_buckets):
+            if elapsed <= boundary:
+                for bucket_index in range(index, len(_duration_buckets)):
+                    values[2 + bucket_index] += 1
+    _http_logger.info(json.dumps({"request_id": request_id, "method": request.method, "path": route, "status": response.status_code, "duration_seconds": round(elapsed, 6)}))
+    return response
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics():
+    with _metrics_lock:
+        rows = [(key, value[:]) for key, value in _http_metrics.items()]
+    output = ["# HELP medisphere_http_requests_total HTTP responses by route and status", "# TYPE medisphere_http_requests_total counter",
+              "# HELP medisphere_http_request_duration_seconds HTTP response latency", "# TYPE medisphere_http_request_duration_seconds histogram"]
+    for (method, route, status), values in rows:
+        count, duration = values[:2]
+        labels = f'method="{method}",route="{route}",status="{status}"'
+        output.append(f"medisphere_http_requests_total{{{labels}}} {count}")
+        for index, boundary in enumerate(_duration_buckets):
+            output.append(f'medisphere_http_request_duration_seconds_bucket{{{labels},le="{boundary:g}"}} {values[2 + index]}')
+        output.append(f'medisphere_http_request_duration_seconds_bucket{{{labels},le="+Inf"}} {count}')
+        output.append(f"medisphere_http_request_duration_seconds_sum{{{labels}}} {duration:.9f}")
+        output.append(f"medisphere_http_request_duration_seconds_count{{{labels}}} {count}")
+    return Response(content="\n".join(output) + "\n", media_type="text/plain; version=0.0.4")
+
+
+@app.get("/api/v1/health/live")
+def liveness():
+    return {"status": "ok"}
+
+
+@app.get("/api/v1/health/ready")
+def readiness(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
+    return {"status": "ready", "database": "ok"}
 
 
 def to_fhir_patient(patient: Patient) -> dict:
@@ -395,6 +469,8 @@ def current_organization(context=Depends(require_permission("users:read"))):
         "name": organization.name,
         "slug": organization.slug,
         "status": organization.status,
+        "logo_url": organization.logo_url,
+        "contact_phone": organization.contact_phone,
         "settings": {
             "timezone": organization.settings.timezone,
             "default_locale": organization.settings.default_locale,
@@ -404,6 +480,20 @@ def current_organization(context=Depends(require_permission("users:read"))):
             "status": organization.subscription.status,
         },
     }
+
+
+@app.put("/api/v1/organizations/current")
+def update_current_organization(payload: OrganizationProfileUpdate, context=Depends(require_permission("users:write")), db: Session = Depends(get_db)):
+    user, membership = context
+    organization = membership.organization
+    organization.name = payload.name
+    organization.logo_url = payload.logo_url or None
+    organization.contact_phone = payload.contact_phone or None
+    db.add(AuditLog(organization_id=membership.organization_id, actor_user_id=user.id, event="organization.profile.updated", resource_type="organization", resource_id=str(organization.id), details={}))
+    db.commit()
+    return {"id": organization.id, "name": organization.name, "slug": organization.slug, "status": organization.status, "logo_url": organization.logo_url, "contact_phone": organization.contact_phone,
+            "settings": {"timezone": organization.settings.timezone, "default_locale": organization.settings.default_locale},
+            "subscription": {"plan_code": organization.subscription.plan_code, "status": organization.subscription.status}}
 
 
 @app.get("/api/v1/patients", response_model=list[PatientResponse])
@@ -454,6 +544,27 @@ def create_practitioner(payload: PractitionerCreate, context=Depends(require_per
     db.commit()
     db.refresh(practitioner)
     return practitioner
+
+
+@app.post("/api/v1/practitioners/bulk", response_model=list[PractitionerResponse], status_code=201)
+def create_practitioners(payload: PractitionerBatchCreate, context=Depends(require_permission("users:write")), db: Session = Depends(get_db)):
+    user, membership = context
+    emails = [row.email.lower() for row in payload.practitioners]
+    if len(emails) != len(set(emails)):
+        raise HTTPException(status_code=409, detail="Each care team member must have a unique email address")
+    rows = [Practitioner(**item.model_dump(), organization_id=membership.organization_id, created_by=user.id) for item in payload.practitioners]
+    db.add_all(rows)
+    try:
+        db.flush()
+        for row in rows:
+            db.add(AuditLog(organization_id=membership.organization_id, actor_user_id=user.id, event="practitioner.created", resource_type="practitioner", resource_id=str(row.id), details={}))
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A care team member with one of these email addresses already exists") from exc
+    for row in rows:
+        db.refresh(row)
+    return rows
 
 
 @app.get("/api/v1/appointments", response_model=list[AppointmentResponse])
@@ -873,17 +984,112 @@ def list_devices(context=Depends(require_permission("monitoring:read")), db: Ses
     return [{"id": row.id, "patient_id": row.patient_id, "display_name": row.display_name, "device_type": row.device_type, "serial_number": row.serial_number, "status": row.status} for row in rows]
 
 
+def create_reading_alerts(db: Session, device: Device, reading: DeviceReading):
+    rules = db.query(MonitoringRule).filter_by(organization_id=device.organization_id, metric=reading.metric.strip(), unit=reading.unit.strip(), enabled=True).all()
+    for rule in rules:
+        breached = (rule.minimum is not None and reading.value < rule.minimum) or (rule.maximum is not None and reading.value > rule.maximum)
+        if breached:
+            boundary = "below minimum" if rule.minimum is not None and reading.value < rule.minimum else "above maximum"
+            db.add(MonitoringAlert(organization_id=device.organization_id, device_id=device.id, reading_id=reading.id,
+                                   rule_id=rule.id, message=f"{reading.metric} is {boundary} configured threshold ({reading.value:g} {reading.unit})"))
+
+
+@app.get("/api/v1/remote-monitoring/rules")
+def list_monitoring_rules(context=Depends(require_permission("monitoring:read")), db: Session = Depends(get_db)):
+    _, membership = context
+    rows = db.query(MonitoringRule).filter_by(organization_id=membership.organization_id).order_by(MonitoringRule.metric).all()
+    return [{"id": r.id, "metric": r.metric, "unit": r.unit, "minimum": r.minimum, "maximum": r.maximum, "enabled": r.enabled} for r in rows]
+
+
+@app.post("/api/v1/remote-monitoring/rules", status_code=201)
+def create_monitoring_rule(payload: MonitoringRuleCreate, context=Depends(require_permission("monitoring:write")), db: Session = Depends(get_db)):
+    user, membership = context
+    rule = db.query(MonitoringRule).filter_by(organization_id=membership.organization_id, metric=payload.metric.strip(), unit=payload.unit.strip()).first()
+    if rule:
+        rule.minimum, rule.maximum, rule.enabled = payload.minimum, payload.maximum, True
+    else:
+        rule = MonitoringRule(organization_id=membership.organization_id, metric=payload.metric.strip(), unit=payload.unit.strip(), minimum=payload.minimum, maximum=payload.maximum)
+        db.add(rule)
+        db.flush()
+    db.add(AuditLog(organization_id=membership.organization_id, actor_user_id=user.id, event="monitoring.rule.saved", resource_type="monitoring_rule", resource_id=str(rule.id), details={"metric": rule.metric, "unit": rule.unit}))
+    db.commit()
+    return {"id": rule.id, "metric": rule.metric, "unit": rule.unit, "minimum": rule.minimum, "maximum": rule.maximum, "enabled": rule.enabled}
+
+
+@app.get("/api/v1/remote-monitoring/alerts")
+def list_monitoring_alerts(context=Depends(require_permission("monitoring:read")), db: Session = Depends(get_db)):
+    _, membership = context
+    rows = (db.query(MonitoringAlert, Device, Patient, DeviceReading)
+            .join(Device, MonitoringAlert.device_id == Device.id)
+            .join(Patient, Device.patient_id == Patient.id)
+            .join(DeviceReading, MonitoringAlert.reading_id == DeviceReading.id)
+            .filter(MonitoringAlert.organization_id == membership.organization_id)
+            .order_by(MonitoringAlert.created_at.desc()).limit(200).all())
+    return [{"id": a.id, "device_id": d.id, "device_name": d.display_name, "patient_name": p.given_name + " " + p.family_name,
+             "metric": reading.metric, "value": reading.value, "unit": reading.unit, "message": a.message,
+             "status": a.status, "created_at": a.created_at, "acknowledged_at": a.acknowledged_at} for a, d, p, reading in rows]
+
+
+@app.post("/api/v1/remote-monitoring/alerts/{alert_id}/acknowledge")
+def acknowledge_monitoring_alert(alert_id: int, context=Depends(require_permission("monitoring:write")), db: Session = Depends(get_db)):
+    user, membership = context
+    alert = db.query(MonitoringAlert).filter_by(id=alert_id, organization_id=membership.organization_id).with_for_update().first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    if alert.status == "open":
+        alert.status, alert.acknowledged_at, alert.acknowledged_by = "acknowledged", datetime.now(timezone.utc), user.id
+        db.add(AuditLog(organization_id=membership.organization_id, actor_user_id=user.id, event="monitoring.alert.acknowledged", resource_type="monitoring_alert", resource_id=str(alert.id), details={}))
+        db.commit()
+    return {"id": alert.id, "status": alert.status, "acknowledged_at": alert.acknowledged_at}
+
+
 @app.post("/api/v1/remote-monitoring/devices", status_code=201)
 def create_device(payload: DeviceCreate, context=Depends(require_permission("monitoring:write")), db: Session = Depends(get_db)):
     user, membership = context
     if not db.query(Patient).filter_by(id=payload.patient_id, organization_id=membership.organization_id, status="active").first():
         raise HTTPException(status_code=404, detail="Patient not found")
-    row = Device(**payload.model_dump(), organization_id=membership.organization_id, created_by=user.id)
+    ingest_token = secrets.token_urlsafe(32)
+    row = Device(**payload.model_dump(), organization_id=membership.organization_id, created_by=user.id,
+                 ingest_token_hash=hashlib.sha256(ingest_token.encode()).hexdigest())
     db.add(row)
     db.flush()
     db.add(AuditLog(organization_id=membership.organization_id, actor_user_id=user.id, event="monitoring.device.created", resource_type="device", resource_id=str(row.id), details={}))
     db.commit()
-    return {"id": row.id, "patient_id": row.patient_id, "display_name": row.display_name, "device_type": row.device_type, "serial_number": row.serial_number, "status": row.status}
+    return {"id": row.id, "patient_id": row.patient_id, "display_name": row.display_name, "device_type": row.device_type, "serial_number": row.serial_number, "status": row.status, "ingest_token": ingest_token}
+
+
+@app.post("/api/v1/remote-monitoring/devices/{device_id}/ingest-token")
+def rotate_device_ingest_token(device_id: int, context=Depends(require_permission("monitoring:write")), db: Session = Depends(get_db)):
+    user, membership = context
+    device = db.query(Device).filter_by(id=device_id, organization_id=membership.organization_id, status="active").first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    ingest_token = secrets.token_urlsafe(32)
+    device.ingest_token_hash = hashlib.sha256(ingest_token.encode()).hexdigest()
+    db.add(AuditLog(organization_id=membership.organization_id, actor_user_id=user.id, event="monitoring.device.token_rotated", resource_type="device", resource_id=str(device.id), details={}))
+    db.commit()
+    return {"device_id": device.id, "ingest_token": ingest_token}
+
+
+@app.post("/api/v1/remote-monitoring/ingest/{device_id}/readings", status_code=201)
+def ingest_device_reading(device_id: int, payload: DeviceReadingCreate, request: Request, db: Session = Depends(get_db)):
+    authorization = request.headers.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=401, detail="Device bearer token required")
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    device = db.query(Device).filter_by(id=device_id, ingest_token_hash=token_hash, status="active").first()
+    if not device:
+        raise HTTPException(status_code=401, detail="Invalid device token")
+    if payload.recorded_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="Reading timestamp must include a timezone")
+    row = DeviceReading(device_id=device.id, organization_id=device.organization_id, **payload.model_dump())
+    db.add(row)
+    db.flush()
+    create_reading_alerts(db, device, row)
+    db.add(AuditLog(organization_id=device.organization_id, event="monitoring.reading.ingested", resource_type="device_reading", resource_id=str(row.id), details={"metric": row.metric, "unit": row.unit}))
+    db.commit()
+    return {"id": row.id, "device_id": row.device_id, "metric": row.metric, "value": row.value, "unit": row.unit, "recorded_at": row.recorded_at}
 
 
 @app.get("/api/v1/remote-monitoring/devices/{device_id}/readings")
@@ -908,5 +1114,6 @@ def add_device_reading(device_id: int, payload: DeviceReadingCreate, context=Dep
     db.add(row)
     db.flush()
     db.add(AuditLog(organization_id=membership.organization_id, actor_user_id=user.id, event="monitoring.reading.recorded", resource_type="device_reading", resource_id=str(row.id), details={"metric": row.metric, "unit": row.unit}))
+    create_reading_alerts(db, device, row)
     db.commit()
     return {"id": row.id, "device_id": row.device_id, "metric": row.metric, "value": row.value, "unit": row.unit, "recorded_at": row.recorded_at}

@@ -29,6 +29,8 @@ class Organization(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(180), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
+    logo_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     memberships: Mapped[list["OrganizationMembership"]] = relationship(back_populates="organization")
     settings: Mapped["OrganizationSettings | None"] = relationship(back_populates="organization", uselist=False)
     subscription: Mapped["OrganizationSubscription | None"] = relationship(back_populates="organization", uselist=False)
@@ -128,6 +130,8 @@ class Practitioner(TimestampMixin, Base):
     family_name: Mapped[str] = mapped_column(String(100), nullable=False)
     specialty: Mapped[str] = mapped_column(String(120), nullable=False)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    role: Mapped[str] = mapped_column(String(80), default="Practitioner", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
@@ -305,6 +309,7 @@ class Device(TimestampMixin, Base):
     display_name: Mapped[str] = mapped_column(String(180), nullable=False)
     device_type: Mapped[str] = mapped_column(String(80), nullable=False)
     serial_number: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    ingest_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
@@ -319,3 +324,29 @@ class DeviceReading(Base):
     unit: Mapped[str] = mapped_column(String(40), nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class MonitoringRule(TimestampMixin, Base):
+    __tablename__ = "monitoring_rules"
+    __table_args__ = (UniqueConstraint("organization_id", "metric", "unit", name="uq_monitoring_rule_org_metric_unit"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    metric: Mapped[str] = mapped_column(String(100), nullable=False)
+    unit: Mapped[str] = mapped_column(String(40), nullable=False)
+    minimum: Mapped[float | None] = mapped_column(nullable=True)
+    maximum: Mapped[float | None] = mapped_column(nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class MonitoringAlert(Base):
+    __tablename__ = "monitoring_alerts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    reading_id: Mapped[int] = mapped_column(ForeignKey("device_readings.id", ondelete="CASCADE"), nullable=False, index=True)
+    rule_id: Mapped[int] = mapped_column(ForeignKey("monitoring_rules.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="open", nullable=False, index=True)
+    message: Mapped[str] = mapped_column(String(240), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

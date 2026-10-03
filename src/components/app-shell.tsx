@@ -11,10 +11,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [session, setSession] = useState<{ user: { full_name: string }; organization: string; role: string } | null>(null);
+  const [organizationLogo, setOrganizationLogo] = useState<string | null>(null);
   useEffect(() => {
     fetch("/api/auth/me").then(async (response) => {
       if (!response.ok) { await fetch("/api/auth/logout", { method: "POST" }); router.replace("/login"); return; }
       setSession(await response.json());
+      fetch("/api/data/organizations/current").then(async (profile) => { if (profile.ok) setOrganizationLogo((await profile.json()).logo_url ?? null); }).catch(() => undefined);
     }).catch(() => router.replace("/login"));
   }, [router]);
   async function signOut() {
@@ -25,7 +27,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return <div className="app-shell">
     <aside className="sidebar">
       <Link className="brand" href="/dashboard"><span className="brand-mark"><Image src="/medisphere-mark.svg" width={36} height={36} alt="" /></span><span><strong>MediSphere AI</strong><small>HEALTHCARE</small></span></Link>
-      <div className="org-switch"><span className="org-avatar">MS</span><span className="org-copy"><strong>{session?.organization ?? "MediSphere AI Medical"}</strong><small>Care network</small></span><ChevronDown size={15} /></div>
+      <div className="org-switch">{organizationLogo ? <img className="org-avatar org-logo" src={organizationLogo} alt="" /> : <span className="org-avatar">MS</span>}<span className="org-copy"><strong>{session?.organization ?? "MediSphere AI Medical"}</strong><small>Care network</small></span><ChevronDown size={15} /></div>
       <div className="nav-label">WORKSPACE</div>
       <nav className="nav-list" aria-label="Main navigation">{modules.map((item) => {
         const Icon = item.icon;

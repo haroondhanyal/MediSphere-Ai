@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+.env*
+apps/api/.venv
+apps/api/__pycache__
+apps/api/nexacare.db
+coverage
+playwright-report
+test-results

@@ -14,6 +14,6 @@ export default function DashboardPage() {
     </section>
     <div className="section-heading"><div><h2>Workspace modules</h2><p>Open a module to work with that team’s workflow.</p></div><span className="module-count">{cards.length} MODULES</span></div>
     <section className="module-grid">{cards.map((item) => { const Icon = item.icon; return <Link className="module-card" href={item.href} key={item.href}><span className="module-icon"><Icon size={19} /></span><span className="module-text"><strong>{item.label}</strong><small>{item.description}</small></span><ArrowUpRight className="module-arrow" size={16} /></Link>; })}</section>
-    <div className="notice"><span className="notice-mark">i</span><span><strong>Phase 1 workspace foundation</strong><small>Navigation and module screens are scaffolded. Connect each workflow to its API as the backend phases are implemented.</small></span></div>
+    <div className="notice"><span className="notice-mark">i</span><span><strong>Phases 1–10 local workflows are ready</strong><small>Care, revenue, interoperability, monitoring alerts, automated checks, and deployment tooling are in place.</small></span></div>
   </>;
 }

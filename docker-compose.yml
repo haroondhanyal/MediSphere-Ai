@@ -4,32 +4,66 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: medisphere
-      POSTGRES_USER: medisphere
-      POSTGRES_PASSWORD: medisphere
+      POSTGRES_DB: ${POSTGRES_DB:-medisphere}
+      POSTGRES_USER: ${POSTGRES_USER:-medisphere}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-medisphere}
     ports:
       - "5432:5432"
     volumes:
       - medisphere-postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U medisphere -d medisphere"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
   api:
     build: ./apps/api
     environment:
-      DATABASE_URL: postgresql+psycopg://medisphere:medisphere@db:5432/medisphere
-      JWT_SECRET: local-development-secret-change-before-deployment
-      JWT_ISSUER: medisphere-api
-      COOKIE_SECURE: "false"
-      CORS_ORIGINS: http://localhost:3000
-      SEED_ADMIN_EMAIL: admin@medisphere.local
-      SEED_ADMIN_PASSWORD: MediSphere-Demo-2026!
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-medisphere}:${POSTGRES_PASSWORD:-medisphere}@db:5432/${POSTGRES_DB:-medisphere}
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-before-deployment}
+      JWT_ISSUER: ${JWT_ISSUER:-medisphere-api}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@medisphere.local}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-MediSphere-Demo-2026!}
+      SEED_DEMO_DATA: "true"
+      RUN_MIGRATIONS: "true"
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
+  web:
+    build:
+      context: .
+      dockerfile: apps/web.Dockerfile
+    environment:
+      API_INTERNAL_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    restart: unless-stopped
+  k6:
+    image: grafana/k6:0.55.0
+    profiles: [performance]
+    volumes:
+      - ./automation/performance:/scripts:ro
+    environment:
+      API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    command: ["run", "/scripts/k6-smoke.js"]
 volumes:
   medisphere-postgres:

@@ -23,7 +23,10 @@ function smoke() {
     { headers: { "Content-Type": "application/json" } },
   );
   check(login, { "login succeeds": (response) => response.status === 200 });
-  const patients = http.get(baseUrl + "/api/v1/patients");
+  if (login.status !== 200 || !login.cookies.access_token?.length) return;
+  const patients = http.get(baseUrl + "/api/v1/patients", {
+    headers: { Cookie: "access_token=" + login.cookies.access_token[0].value },
+  });
   check(patients, { "patient search responds": (response) => response.status === 200 });
   sleep(1);
 }
