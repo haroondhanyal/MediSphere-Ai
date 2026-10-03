@@ -13,9 +13,12 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     ...(request.method === "POST" ? { body: await request.text() } : {}),
     cache: "no-store",
   });
-  const response = new NextResponse(upstream.body, { status: upstream.status });
-  const setCookie = upstream.headers.get("set-cookie");
-  if (setCookie) response.headers.set("set-cookie", setCookie);
+  const headers = new Headers();
+  for (const name of ["content-type", "cache-control", "x-request-id", "set-cookie"]) {
+    const value = upstream.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  const response = new NextResponse(upstream.body, { status: upstream.status, headers });
   return response;
 }
 

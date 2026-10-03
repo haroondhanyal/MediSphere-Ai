@@ -792,6 +792,8 @@ def create_notification(payload: NotificationCreate, context=Depends(require_per
     user, membership = context
     item = Notification(organization_id=membership.organization_id, recipient_user_id=user.id, title=payload.title, body=payload.body, category=payload.category)
     db.add(item)
+    db.flush()
+    db.add(AuditLog(organization_id=membership.organization_id, actor_user_id=user.id, event="notification.created", resource_type="notification", resource_id=str(item.id), details={"category": item.category}))
     db.commit()
     db.refresh(item)
     return {"id": item.id, "title": item.title, "created_at": item.created_at}
@@ -804,6 +806,7 @@ def mark_notification_read(notification_id: int, context=Depends(require_permiss
     if not item:
         raise HTTPException(status_code=404, detail="Notification not found")
     item.read_at = datetime.now(timezone.utc)
+    db.add(AuditLog(organization_id=membership.organization_id, actor_user_id=user.id, event="notification.read", resource_type="notification", resource_id=str(item.id), details={}))
     db.commit()
     return {"status": "read"}
 
