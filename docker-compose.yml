@@ -1,0 +1,35 @@
+name: medisphere-ai
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: medisphere
+      POSTGRES_USER: medisphere
+      POSTGRES_PASSWORD: medisphere
+    ports:
+      - "5432:5432"
+    volumes:
+      - medisphere-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medisphere -d medisphere"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  api:
+    build: ./apps/api
+    environment:
+      DATABASE_URL: postgresql+psycopg://medisphere:medisphere@db:5432/medisphere
+      JWT_SECRET: local-development-secret-change-before-deployment
+      JWT_ISSUER: medisphere-api
+      COOKIE_SECURE: "false"
+      CORS_ORIGINS: http://localhost:3000
+      SEED_ADMIN_EMAIL: admin@medisphere.local
+      SEED_ADMIN_PASSWORD: MediSphere-Demo-2026!
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  medisphere-postgres:

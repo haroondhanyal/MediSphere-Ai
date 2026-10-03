@@ -1,0 +1,25 @@
+import { Activity, Bell, CalendarDays, ClipboardList, FileCheck2, FlaskConical, HeartPulse, LayoutDashboard, MessageCircle, Pill, ScanLine, Settings2, ShieldCheck, Stethoscope, Users, Video, WalletCards, ChartNoAxesCombined, Watch, Sparkles } from "lucide-react";
+
+export const modules = [
+  { href: "/dashboard", label: "Overview", description: "Operational snapshot", icon: LayoutDashboard },
+  { href: "/patients", label: "Patients", description: "Patient directory and records", icon: Users },
+  { href: "/doctors", label: "Care team", description: "Practitioners and staff", icon: Stethoscope },
+  { href: "/appointments", label: "Appointments", description: "Schedules and visits", icon: CalendarDays },
+  { href: "/encounters", label: "Encounters", description: "Clinical documentation", icon: ClipboardList },
+  { href: "/prescriptions", label: "Prescriptions", description: "Medication orders", icon: Pill },
+  { href: "/labs", label: "Laboratory", description: "Orders and results", icon: FlaskConical },
+  { href: "/radiology", label: "Radiology", description: "Imaging workflow", icon: ScanLine },
+  { href: "/pharmacy", label: "Pharmacy", description: "Dispensing and inventory", icon: HeartPulse },
+  { href: "/telehealth", label: "Telehealth", description: "Virtual care sessions", icon: Video },
+  { href: "/remote-monitoring", label: "Remote monitoring", description: "Patient devices and readings", icon: Watch },
+  { href: "/messages", label: "Messages", description: "Secure team conversations", icon: MessageCircle },
+  { href: "/notifications", label: "Notifications", description: "Alerts and reminders", icon: Bell },
+  { href: "/insurance", label: "Insurance", description: "Coverage and eligibility", icon: ShieldCheck },
+  { href: "/claims", label: "Claims", description: "Claim review and status", icon: FileCheck2 },
+  { href: "/authorizations", label: "Prior authorization", description: "Requests and payer decisions", icon: ShieldCheck },
+  { href: "/billing", label: "Billing", description: "Invoices and payments", icon: WalletCards },
+  { href: "/analytics", label: "Analytics", description: "Reports and trends", icon: ChartNoAxesCombined },
+  { href: "/copilot", label: "Care copilot", description: "Permission-aware record retrieval", icon: Sparkles },
+  { href: "/audit", label: "Audit log", description: "Access and activity history", icon: Activity },
+  { href: "/settings", label: "Settings", description: "Workspace configuration", icon: Settings2 },
+] as const;

@@ -1,0 +1,12 @@
+node_modules/
+.next/
+out/
+coverage/
+.pytest_cache/
+.DS_Store
+.env*
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+nexacare.db

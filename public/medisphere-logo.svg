@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 96" fill="none" role="img" aria-labelledby="title">
+  <title id="title">MediSphere AI</title>
+  <defs>
+    <linearGradient id="orb" x1="10" y1="4" x2="84" y2="91" gradientUnits="userSpaceOnUse"><stop stop-color="#38E5D2"/><stop offset=".48" stop-color="#149DD6"/><stop offset="1" stop-color="#06439A"/></linearGradient>
+    <linearGradient id="orbit" x1="1" y1="80" x2="94" y2="15" gradientUnits="userSpaceOnUse"><stop stop-color="#24DCC6"/><stop offset="1" stop-color="#118DDB"/></linearGradient>
+    <linearGradient id="ai" x1="362" y1="41" x2="435" y2="63" gradientUnits="userSpaceOnUse"><stop stop-color="#18D9BD"/><stop offset="1" stop-color="#078BD2"/></linearGradient>
+  </defs>
+  <g transform="translate(3 3)">
+    <circle cx="45" cy="45" r="34" fill="url(#orb)"/>
+    <ellipse cx="45" cy="45" rx="43" ry="19" transform="rotate(-39 45 45)" stroke="url(#orbit)" stroke-width="5"/>
+    <circle cx="78" cy="18" r="5.5" fill="#27D7C5" stroke="white" stroke-width="2"/>
+    <path d="M38 24a5 5 0 0 0-5 5v8h-8a5 5 0 0 0-5 5v5a5 5 0 0 0 5 5h8v8a5 5 0 0 0 5 5h5a5 5 0 0 0 5-5v-8h8a5 5 0 0 0 5-5v-5a5 5 0 0 0-5-5h-8v-8a5 5 0 0 0-5-5h-5Z" fill="white"/>
+    <path d="M5 45h19l5-8 5 17 5-12 4 5h36" stroke="#1595C8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="103" y="64" fill="#083B81" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="700" letter-spacing="-2.7">MediSphere</text>
+  <text x="370" y="64" fill="url(#ai)" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="700" letter-spacing="-2">AI</text>
+</svg>

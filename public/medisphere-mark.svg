@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
+  <defs>
+    <linearGradient id="orb" x1="14" y1="8" x2="81" y2="88" gradientUnits="userSpaceOnUse"><stop stop-color="#32E0CF"/><stop offset=".48" stop-color="#129DD7"/><stop offset="1" stop-color="#073E98"/></linearGradient>
+    <linearGradient id="orbit" x1="7" y1="75" x2="88" y2="21" gradientUnits="userSpaceOnUse"><stop stop-color="#27D7C5"/><stop offset="1" stop-color="#1084D8"/></linearGradient>
+  </defs>
+  <circle cx="48" cy="48" r="37" fill="url(#orb)"/>
+  <ellipse cx="48" cy="48" rx="46" ry="20" transform="rotate(-39 48 48)" stroke="url(#orbit)" stroke-width="5"/>
+  <circle cx="83" cy="20" r="6" fill="#27D7C5" stroke="white" stroke-width="2"/>
+  <path d="M40 27a5 5 0 0 0-5 5v9h-9a5 5 0 0 0-5 5v5a5 5 0 0 0 5 5h9v9a5 5 0 0 0 5 5h5a5 5 0 0 0 5-5v-9h9a5 5 0 0 0 5-5v-5a5 5 0 0 0-5-5h-9v-9a5 5 0 0 0-5-5h-5Z" fill="white"/>
+  <path d="M12 49h20l5-9 5 19 5-13 4 5h33" stroke="#1595C8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
