@@ -26,6 +26,42 @@ The screenshots below were captured from the running application at desktop size
 |---|---|
 | ![Organization profile settings screen](./docs/screenshots/07-organization-settings.png) | ![Care copilot screen](./docs/screenshots/08-copilot.png) |
 
+The remaining workflow screenshots cover all other workspace modules:
+
+### Clinical workflow screens
+
+| Encounters | Prescriptions |
+|---|---|
+| ![Encounter documentation screen](./docs/screenshots/09-encounters.png) | ![Prescription workflow screen](./docs/screenshots/10-prescriptions.png) |
+
+| Laboratory | Radiology |
+|---|---|
+| ![Laboratory orders and results screen](./docs/screenshots/11-laboratory.png) | ![Radiology workflow screen](./docs/screenshots/12-radiology.png) |
+
+| Pharmacy | Telehealth |
+|---|---|
+| ![Pharmacy dispensing screen](./docs/screenshots/13-pharmacy.png) | ![Telehealth coordination screen](./docs/screenshots/14-telehealth.png) |
+
+### Administration and revenue screens
+
+| Team messages | Notifications |
+|---|---|
+| ![Organization messages screen](./docs/screenshots/15-messages.png) | ![Notifications screen](./docs/screenshots/16-notifications.png) |
+
+| Insurance | Claims |
+|---|---|
+| ![Insurance coverage screen](./docs/screenshots/17-insurance.png) | ![Claims workflow screen](./docs/screenshots/18-claims.png) |
+
+| Prior authorization | Billing |
+|---|---|
+| ![Prior authorization workflow screen](./docs/screenshots/19-authorizations.png) | ![Billing and payments screen](./docs/screenshots/20-billing.png) |
+
+### Reporting and governance screens
+
+| Analytics | Audit log |
+|---|---|
+| ![Analytics screen](./docs/screenshots/21-analytics.png) | ![Audit log screen](./docs/screenshots/22-audit-log.png) |
+
 ## What the product does
 
 ### Care delivery
